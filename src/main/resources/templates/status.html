@@ -1,0 +1,58 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Akka Cluster Status</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+</head>
+<body>
+<h2>Akka Cluster Status for <span th:text="${env}"></span> Environment (<span th:text="${asoftime}"></span>)</h2>
+<h3>------ Cluster Topology ------</h3>
+<p><span th:text="${systemError}"></span></p>
+<p><b>Responder: </b><span th:text="${responder}" ></span>
+<br/><b>Unreachable nodes: </b><span th:text="${unreachable}" ></span></p>
+
+<table>
+    <tr bgcolor="gainsboro">
+        <th align="center">Service</th>
+        <th align="center">Address</th>
+        <th align="center">Status</th>
+        <th align="center">Leadership</th>
+    </tr>
+    <tr  bgcolor="ghostwhite" th:each="node : ${nodes}">
+        <td th:text="${node.service}">Service</td>
+        <td th:text="${node.ip}">Address</td>
+        <td th:text="${node.status}">Status</td>
+        <td th:text="${node.leader}">Status</td>
+    </tr>
+</table>
+<p>Verify that the number of nodes found matches the expected number:</p>
+<table>
+    <tr bgcolor="gainsboro">
+        <th width="100" align="center">Actual</th>
+        <th width="100" align="center">Expected</th>
+        <th width="100" align="center">All Present?</th>
+    </tr>
+    < bgcolor="ghostwhite">
+        <td width="100" th:text="${nem_actual}"></td>
+        <td width="100" th:text="${nem_expected}"></td>
+        <td width="100" th:text="${nem_result}"></td>
+    </tr>
+</table>
+<br/>
+<h3>------ Load Balancers ------</h3>
+<p>Send a rapid-fire series of requests to each ELB to verify that requests are forwarded to all nodes in the cluster:</p>
+<table>
+    <tr bgcolor="gainsboro">
+        <th width="300" align="center">ELB</th>
+        <th width="120" align="center">Service</th>
+        <th align="center">Targets</th>
+    </tr>
+    <tr bgcolor="ghostwhite">
+        <td width="300" th:text="${UriAwsELB}"></td>
+        <td width="120" align="left">Service</td>
+        <td th:text="${UriAwsELB_status}"></td>
+    </tr>
+</table>
+
+</body>
+</html>
