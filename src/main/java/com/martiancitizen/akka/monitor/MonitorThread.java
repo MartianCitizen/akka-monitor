@@ -20,7 +20,7 @@ public class MonitorThread {
         WebApplication.log(false, "Monitor thread starting");
         final Runnable requestStatus = () -> {
             WebApplication.log(false, "Getting status");
-            new Status(WebApplication.environment, Optional.<Model>empty());
+            new Status(WebApplication.environment, Optional.<Model>empty()).withClusterInfo();
         };
        scheduler.scheduleAtFixedRate(requestStatus, 1, 1, MINUTES);
     }

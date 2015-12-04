@@ -9,33 +9,25 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import com.martiancitizen.akka.monitor.ClusterData.Node;
+
 public class Status {
 
+    private String env;
+    private String uriAwsELB;
     private Optional<Model> modelOpt = Optional.empty();
-    private Optional<ClusterData> clusterDataOpt = Optional.empty();
 
     public Status(String env, Optional<Model> modelOpt) {
-
+        this.env = env;
         this.modelOpt = modelOpt;
+        this.uriAwsELB = WebApplication.appEnv.getProperty(env.toLowerCase() + ".uri");
+    }
+
+    public Status withClusterInfo() {
 
         addToModel("env", env);
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd hh:mm:ss a");
         addToModel("asoftime", java.time.LocalDateTime.now().format(formatter));
-
-        String UriAwsELB = "NA";
-        switch (env.toLowerCase()) {
-            case "prod":
-                UriAwsELB = WebApplication.appEnv.getProperty("prod.elb.uri");
-                break;
-            case "dev":
-                UriAwsELB = WebApplication.appEnv.getProperty("dev.elb.uri");
-                break;
-            default:
-                String msg = "Unknown environment specified: " + env;
-                addToModel("systemError", "ERROR: " + msg);
-                WebApplication.log(true, msg);
-                return;
-        }
 
         SimpleClientHttpRequestFactory client = new SimpleClientHttpRequestFactory();
         client.setConnectTimeout(10000);
@@ -47,11 +39,11 @@ public class Status {
         RestTemplate restTemplate = new RestTemplate(client);
         Optional<Response> respOpt = Optional.empty();
         try {
-            respOpt = Optional.of(restTemplate.getForObject(UriAwsELB + "/admin/clusterstate", Response.class));
+            respOpt = Optional.of(restTemplate.getForObject(this.uriAwsELB + "/admin/clusterstate", Response.class));
         } catch (Exception e) {
             addToModel("systemError", "ERROR: " + e.toString()); // forwarding failed
             WebApplication.log(true, e.toString());
-            return;
+            return this;
         }
         Response resp = respOpt.get();
 
@@ -59,75 +51,84 @@ public class Status {
             String msg = "Unexpected HTTP response code " + resp.getCode();
             addToModel("systemError", "ERROR: " + msg);
             WebApplication.log(true, msg);
-        } else {
-            ClusterData cluster = resp.getData();
-            clusterDataOpt = Optional.of(cluster);
-
-            addToModel("responder", cluster.getResponder());
-
-            if (cluster.unreachable.size() < 1) {
-                addToModel("unreachable", "NONE");
-            } else {
-                addToModel("unreachable", cluster.unreachable.toString());
-                WebApplication.log(true, "Unreachable nodes: " + cluster.unreachable.toString());
-            }
-
-
-            int numMembers = cluster.getMembers().size();
-            addToModel("nem_actual", numMembers);
-            addToModel("nem_expected", WebApplication.numExpectedMembers);
-            if (numMembers == WebApplication.numExpectedMembers) {
-                addToModel("nem_result", "YES");
-            } else {
-                addToModel("nem_result", "ERROR");
-                WebApplication.log(true, "Number of cluster members expected: " + WebApplication.numExpectedMembers + " Actual: " + numMembers);
-            }
-
-            addToModel("nodes", cluster.nodes);
+            return this;
         }
+
+        ClusterData cluster = resp.getData();
+
+        addToModel("responder", cluster.getResponder());
+
+        if (cluster.getUnreachable().size() < 1) {
+            addToModel("unreachable", "NONE");
+        } else {
+            addToModel("unreachable", cluster.getUnreachable().toString());
+            WebApplication.log(true, "Unreachable nodes: " + cluster.getUnreachable().toString());
+        }
+
+        int numMembers = cluster.getMembers().size();
+        addToModel("nem_actual", numMembers);
+        addToModel("nem_expected", WebApplication.numExpectedMembers);
+        if (numMembers == WebApplication.numExpectedMembers) {
+            addToModel("nem_result", "YES");
+        } else {
+            addToModel("nem_result", "ERROR");
+            WebApplication.log(true, "Number of cluster members expected: " + WebApplication.numExpectedMembers + " Actual: " + numMembers);
+        }
+
+        addToModel("nodes", cluster.getNodes());
 
         /*
         Now verify that ELBs forward to all nodes
          */
 
-        addToModel("UriAwsELB", UriAwsELB);
-        addToModel("UriAwsELB_status", checkClusterELB(restTemplate, UriAwsELB, WebApplication.numExpectedMembers));
+        addToModel("UriAwsELB", this.uriAwsELB);
+        addToModel("UriAwsELB_status", checkClusterELB(cluster, restTemplate, WebApplication.numExpectedMembers));
+
+        return this;
     }
 
     private void addToModel(String attr, Object value) {
-        if (modelOpt.isPresent()) modelOpt.get().addAttribute(attr, value);
+        if (this.modelOpt.isPresent()) this.modelOpt.get().addAttribute(attr, value);
     }
 
-    private String checkClusterELB(RestTemplate restTemplate, String elbUrl, int numNodes) {
+    private String checkClusterELB(ClusterData cluster, RestTemplate restTemplate, int numNodes) {
+
         String msg = "";
-        if (!clusterDataOpt.isPresent()) {
-            msg = "Cluster data not available";
-            WebApplication.log(true, "ELB error: " + elbUrl + " " + msg);
-            return msg;
-        }
-        ClusterData cluster = clusterDataOpt.get();
-        String url = elbUrl + "/admin/address";
-        List<ClusterData.Node> nodes = cluster.nodes;
+        String url = this.uriAwsELB + "/admin/address";
+
+        List<Node> nodes = cluster.getNodes();
         List<String> errors = new ArrayList<>();
         IntStream.range(0, numNodes * 2).forEach(i -> {
             String ip = restTemplate.getForObject(url, String.class).replaceFirst(".*\\x5b", "").replaceFirst("\\x5d.*", "");
-            Optional<ClusterData.Node> nodeOpt = nodes.stream().filter(n -> n.ip.equals(ip)).findFirst();
-            if (!nodeOpt.isPresent()) {
-                nodeOpt.get().foundByELB = true;
+            Optional<Node> nodeOpt = nodes.stream()
+                    .filter(node -> node.getIp().equals(ip))
+                    .findFirst();
+            if (nodeOpt.isPresent()) {
+                nodeOpt.get().setFoundByELB(true);
             } else {
                 String err = "ELB forwarded to non-service node " + ip;
                 errors.add(err);
-                WebApplication.log(true, "ELB error: " + elbUrl + " " + err);
+                WebApplication.log(true, "ELB error: " + this.uriAwsELB + " " + err);
             }
         });
-        List<String> nodesFound = nodes.stream().filter(n -> n.foundByELB).map(n -> n.ip).collect(Collectors.toList());
-        List<String> nodesNotFound = nodes.stream().filter(n -> !n.foundByELB).map(n -> n.ip).collect(Collectors.toList());
+
+        List<String> nodesFound = nodes.stream()
+                .filter(Node::isFoundByELB).map(Node::getIp)
+                .collect(Collectors.toList());
+
+        List<String> nodesNotFound = nodes.stream()
+                .filter(Node::isNotFoundByELB)
+                .map(Node::getIp)
+                .map(ip -> {
+                    WebApplication.log(true, "ELB error: node not found: " + ip);
+                    return ip;
+                })
+                .collect(Collectors.toList());
+
         msg += nodesFound.isEmpty() ? "HIT: NONE " : nodesFound.stream().collect(Collectors.joining(", ", "HIT: ", " "));
         msg += nodesNotFound.isEmpty() ? "MISS: NONE " : nodesNotFound.stream().collect(Collectors.joining(", ", "MISS: ", " "));
-        msg += errors.stream().collect(Collectors.joining(", "));
-        if (!nodesNotFound.isEmpty()) {
-            WebApplication.log(true, "ELB error: " + elbUrl + " " + msg);
-        }
+        msg += errors.isEmpty() ? "" : errors.stream().collect(Collectors.joining(", "));
+
         return msg;
     }
 

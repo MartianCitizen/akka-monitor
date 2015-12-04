@@ -17,11 +17,29 @@ public class ClusterData {
 
     public class Node {
         public String service;
-        public String ip;
+        private String ip;
+
+        public String getIp() {
+            return ip;
+        }
+
         public String status;
         public String leader;
-        public boolean foundByELB;
-        Node (String service, String ip, String status, String leader) {
+        private boolean foundByELB = false;
+
+        public boolean isFoundByELB() {
+            return foundByELB;
+        }
+
+        public boolean isNotFoundByELB() {
+            return !foundByELB;
+        }
+
+        public void setFoundByELB(boolean flag) {
+            foundByELB = flag;
+        }
+
+        public Node(String service, String ip, String status, String leader) {
             this.service = service;
             this.ip = ip;
             this.status = status;
@@ -29,7 +47,12 @@ public class ClusterData {
             foundByELB = false;
         }
     }
-    public List<Node> nodes = new ArrayList<>();
+
+    private List<Node> nodes = new ArrayList<>();
+
+    public List<Node> getNodes() {
+        return nodes;
+    }
 
     public void setMembers(List<List<String>> members) {
         this.members = members;
@@ -56,31 +79,23 @@ public class ClusterData {
         return unreachable;
     }
 
-    public List<String> getServiceNodeList( List<List<String>> memberList, String serviceType) {
-        List<String> nodes = new ArrayList<>();
-        memberList
-                .stream()
-                .filter(m -> m.get(1).contains(serviceType))
-                .map(m -> m.get(0).replaceFirst(".*@", "").replaceFirst(", status = ", " (").toUpperCase())
-                .forEach(nodes::add);
-        return nodes;
-    }
+    public void mapNodes(List<List<String>> memberList) {
 
-    public void mapNodes (List<List<String>> memberList) {
-        List<String> roleLeaderIps = new ArrayList<>();
-        roleLeaders
-                .entrySet()
-                .stream()
-                .map(m -> m.getValue().replaceFirst(".*@", "").replaceFirst("[:].*",""))
-                .forEach(roleLeaderIps::add);
-        for (List<String> member : memberList) {
-            String service = member.get(1).replace("[","").replace("]","");
-            String ip = member.get(0).replaceFirst(".*@", "").replaceFirst("[:].*","");
-            String status = member.get(0).replaceFirst(".*status = ","").replaceFirst("[)].*","");
-            List<String> leadership = new ArrayList<>();
-            if (clusterLeader.contains(ip)) leadership.add("Cluster");
-            if (roleLeaderIps.contains(ip)) leadership.add("Role");
-            nodes.add(new Node(service, ip, status, leadership.stream().collect(Collectors.joining(", "))));
-        }
+        List<String> roleLeaderIps = this.roleLeaders.entrySet().stream()
+                .map(m -> m.getValue().replaceFirst(".*@", "").replaceFirst("[:].*", ""))
+                .collect(Collectors.toList());
+
+        this.nodes = memberList.stream()
+                .map(member -> {
+                    String service = member.get(1).replace("[", "").replace("]", "");
+                    String ip = member.get(0).replaceFirst(".*@", "").replaceFirst("[:].*", "");
+                    String status = member.get(0).replaceFirst(".*status = ", "").replaceFirst("[)].*", "");
+                    List<String> leadership = new ArrayList<>();
+                    if (this.clusterLeader.contains(ip)) leadership.add("Cluster");
+                    if (roleLeaderIps.contains(ip)) leadership.add("Role");
+                    return new Node(service, ip, status, leadership.stream().collect(Collectors.joining(", ")));
+                })
+                .collect(Collectors.toList());
+
     }
 }

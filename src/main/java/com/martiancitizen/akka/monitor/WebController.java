@@ -13,9 +13,7 @@ public class WebController {
 
     @RequestMapping(value = "/status", method = RequestMethod.GET)
     public String status(@RequestParam(value = "env", defaultValue = "dev") String env, Model model) {
-        String environment = env.isEmpty() ? WebApplication.environment : env;
-        Status status = new Status(env, Optional.of(model));
-
+        new Status(env, Optional.of(model)).withClusterInfo();
         return "status";
     }
 

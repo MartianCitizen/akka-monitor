@@ -25,7 +25,7 @@ public class WebApplication {
 
         Options options = new Options()
                 .addOption(OptionBuilder.withArgName("env").hasArg().withDescription("default environment to test").isRequired().create("env"))
-                .addOption(OptionBuilder.withArgName("nem").hasArg().withDescription("expected number of members").isRequired().create("nti"));
+                .addOption(OptionBuilder.withArgName("nem").hasArg().withDescription("expected number of members").isRequired().create("nem"));
 
         CommandLineParser parser = new BasicParser();
         Optional<CommandLine> line = Optional.empty();
